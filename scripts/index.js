@@ -140,27 +140,27 @@
         line-height: 1.5;
       }
       
-      .adblock-container {
+      .detected-container {
         width: 100%;
         max-width: 28rem;
       }
       
-      .adblock-card {
+      .blocker-detected-card {
         background-color: var(--card);
         border-radius: var(--radius);
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         overflow: hidden;
       }
       
-      .adblock-header {
+      .blocker-detected-header {
         padding: 1.5rem 1.5rem 0;
       }
       
-      .adblock-content {
+      .blocker-detected-content {
         padding: 1.5rem;
       }
       
-      .adblock-footer {
+      .blocker-detected-footer {
         padding: 1rem 1.5rem;
         background-color: var(--background);
         color: var(--muted-foreground);
@@ -178,10 +178,10 @@
         color: var(--foreground);
       }
       
-      .adblock-description {
+      .blocker-detected-description {
         color: var(--muted-foreground);
         font-size: 0.875rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 0.25rem;
       }
       
       .instruction {
@@ -248,14 +248,14 @@
     </style>
     </head>
     <body>
-      <div class="adblock-container">
-        <div class="adblock-card">
-          <div class="adblock-header">
+      <div class="blocker-detected-container">
+        <div class="blocker-detected-card">
+          <div class="blocker-detected-header">
             <h1>Ad blocker detected</h1>
-            <p class="adblock-description">Please disable your ad blocker to continue using this site.</p>
+            <p class="blocker-detected-description">Please disable your ad blocker to continue using this site.</p>
           </div>
           
-          <div class="adblock-content">
+          <div class="blocker-detected-content">
             <div class="instruction">
               <div class="instruction-title">Why disable your ad blocker?</div>
               <p class="instruction-text">Ads help us keep this website running and provide you with free content. We promise to only show unobtrusive ads.</p>
@@ -272,7 +272,7 @@
             <a href="javascript:location.reload();" class="button button-primary">Try again</a>
           </div>
           
-          <div class="adblock-footer">
+          <div class="blocker-detected-footer">
             Powered by <a href="https://noadblocker.be-a.dev/?ref=blocked-page&utm_source=${window.location.hostname}" target="_blank" class="credit-link">NoAdblocker</a>
           </div>
         </div>
