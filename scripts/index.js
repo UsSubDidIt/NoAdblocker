@@ -4,14 +4,33 @@
     const config = {
         detectionUrls: [
             'https://gdmgsecure.com',
-            'https://pagead2.googlesyndication.com', // Common Google ad domain
-            'https://ad.doubleclick.net' // Another common ad domain
+            'https://pagead2.googlesyndication.com',
+            'https://ad.doubleclick.net',
+            'https://www.googletagservices.com/tag/js/gpt.js',  // Google Publisher Tag
+            'https://cdn.taboola.com/libtrc/your-publisher-name/loader.js', // Replace with a real Taboola publisher
+            'https://static.criteo.net/js/ld/publishertag.js', // Criteo
+            'https://js.adsrvr.org/', // The Trade Desk
+            'https://ib.adnxs.com/ttj', // AppNexus (Xandr)
+            'https://contextual.media.net/dmedianet.js',   // Media.net
+            'https://aax.amazon-adsystem.com/s/apstag.js', // Amazon
+            'https://ads.pubmatic.com/AdServer/js/gshowad.js', // PubMatic
+            'https://adserver.adtechus.com/',            // AdTech
+            'https://prebid.org/dist/prebid.js',         // Prebid.js (Common header bidding library)
+            'https://acdn.adnxs.com/prebid/not-for-prod/1/prebid.js',  //another prebid url
+            'https://cdn.jsdelivr.net/npm/prebid.js@latest/dist/not-for-prod/prebid.js', //prebid from cdn
+            '/ads.js',     // Common local file name
+            '/ads.min.js', // Common local file name (minified)
+            '/advertisement.js',
+            '/banner.js',
+            '/adblocker.js', //ironic, but sometimes used.
+            'https://fundingchoicesmessages.google.com/s/your_id/message.js', // Google funding choices.
         ],
         timeoutMs: 3000,
-        debugMode: false
+        debugMode: false,
+        invisibleElementCheckDelay: 2000, // Delay in milliseconds before checking invisible elements
     };
 
-    // Logger function that respects debug mode
+    // Logger function
     function log(message, error = false) {
         if (config.debugMode) {
             if (error) {
@@ -22,14 +41,13 @@
         }
     }
 
-    // This function checks if a specific URL is accessible
+    // Check URL accessibility
     function checkUrl(url) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             const randomParam = `?rand=${Math.random()}`;
             const fullUrl = `${url}${randomParam}`;
-            
-            // Set a timeout for the request
+
             const timeoutId = setTimeout(() => {
                 xhr.abort();
                 reject({ type: 'timeout', message: 'Request timeout' });
@@ -38,22 +56,14 @@
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4) {
                     clearTimeout(timeoutId);
-
-                    // If status code is 2xx or 4xx, no ad blocker detected for this URL
                     if ((xhr.status >= 200 && xhr.status < 300) || (xhr.status >= 400 && xhr.status < 500)) {
-                        resolve(true); // URL accessible
+                        resolve(true);
                     } else {
-                        // Any non-2xx/4xx status code might indicate ad blocker
-                        reject({ 
-                            type: 'http_error', 
-                            message: `HTTP status: ${xhr.status}`, 
-                            status: xhr.status 
-                        });
+                        reject({ type: 'http_error', message: `HTTP status: ${xhr.status}`, status: xhr.status });
                     }
                 }
             };
 
-            // Add an event listener for network errors
             xhr.onerror = function() {
                 clearTimeout(timeoutId);
                 reject({ type: 'network_error', message: 'Network error' });
@@ -69,23 +79,71 @@
         });
     }
 
-    // Checks for ad blocker by trying multiple URLs
+    // Creates invisible elements with common ad-related class names
+    function createInvisibleElements() {
+        const adClasses = [
+            'ads', 'ads-main', 'ad-main', 'AdHeader', 'AdContainer', 'AD_Top', 'homead', 'ad-lead',
+            'google-adsense', 'adsense', 'ad-banner', 'ad-wrapper', 'ad-unit', 'ad-slot',
+            'ad-space', 'ad-text', 'ad-box', 'ad-banner-top', 'ad-banner-bottom', 'ad-banner-left',
+            'ad-banner-right', 'sponsored-link', 'sponsored-content', 'promoted-content',
+            'advertisement', 'banner-ad', 'leaderboard-ad', 'skyscraper-ad', 'rectangle-ad',
+            'ad_container', 'ad_wrapper', 'ad_banner', 'ad_iframe', 'ad_placeholder',
+            'ad_block', 'ad_area', 'ad_section', 'ads_top', 'ads_bottom', 'ads_left', 'ads_right',
+            'google_ads_iframe',  'taboola-placeholder', 'criteo-placeholder',
+            'outbrain-placeholder', 'doubleclick-placeholder', 'adsbygoogle', 'adroll-placeholder',
+            'amazon-ad-placeholder', 'mgid-placeholder',  'teads-placeholder', 'yieldmo-placeholder',
+             'prebid-ad-unit',  'appnexus-ad-unit', //Header Bidding
+            'pubmatic-ad-unit', 'rubicon-ad-unit',
+        ];
+
+        const elements = [];
+        adClasses.forEach(className => {
+            const div = document.createElement('div');
+            div.className = className;
+            div.style.cssText = 'position: absolute; top: -100px; left: -100px; width: 1px; height: 1px;';
+            document.body.appendChild(div);
+            elements.push(div);
+        });
+        return elements;
+    }
+
+    // Checks if the invisible elements are still visible
+    function checkInvisibleElements(elements) {
+        let blocked = false;
+        elements.forEach(element => {
+            if (
+                element.offsetParent === null ||
+                element.offsetHeight === 0 ||
+                element.offsetWidth === 0 ||
+                element.getClientRects().length === 0 ||
+                window.getComputedStyle(element).display === 'none' ||
+                window.getComputedStyle(element).visibility === 'hidden'
+            ) {
+                blocked = true;
+            }
+            element.remove();
+        });
+        return blocked;
+    }
+
+
+    // Checks for ad blocker by trying multiple URLs and checking invisible elements
     function detectAdBlocker() {
         return new Promise((resolve) => {
-            const detectionPromises = config.detectionUrls.map(url => 
+            const invisibleElements = createInvisibleElements();
+
+            const detectionPromises = config.detectionUrls.map(url =>
                 checkUrl(url)
                     .then(() => ({ url, blocked: false }))
                     .catch(error => ({ url, blocked: true, error }))
             );
 
-            // Consider using Promise.any when wider browser support is available
             Promise.all(detectionPromises)
                 .then(results => {
-                    // If any URL was accessible, consider no ad blocker
                     const anyAccessible = results.some(result => !result.blocked);
-                    
+
                     if (config.debugMode) {
-                        log('Detection results:');
+                        log('Detection results (URLs):');
                         results.forEach(result => {
                             log(`${result.url}: ${result.blocked ? 'BLOCKED' : 'ACCESSIBLE'}`);
                             if (result.blocked && result.error) {
@@ -93,13 +151,18 @@
                             }
                         });
                     }
-                    
-                    resolve(!anyAccessible);
+
+                    setTimeout(() => {
+                        const invisibleElementsBlocked = checkInvisibleElements(invisibleElements);
+                        if (config.debugMode) {
+                            log(`Detection results (invisible elements): ${invisibleElementsBlocked ? 'BLOCKED' : 'ACCESSIBLE'}`);
+                        }
+                        resolve(!anyAccessible || invisibleElementsBlocked);
+                    }, config.invisibleElementCheckDelay);
                 })
                 .catch(error => {
-                    // This should not happen with our implementation
                     log(`Unexpected error in detection: ${error.message}`, true);
-                    resolve(true); // Assume blocked on unexpected errors
+                    resolve(true);
                 });
         });
     }
@@ -280,7 +343,7 @@
     </body>
     </html>`;
 
-    // Function to replace the entire page content
+    // Replace page content if ad blocker is detected
     function replacePageContent() {
         log('Replacing page content due to ad blocker detection');
         document.open();
@@ -288,28 +351,17 @@
         document.close();
     }
 
-    // Function to run the ad blocker check
+    // Run the ad blocker check
     function runAdBlockerCheck() {
         log('Running ad blocker detection');
-        
         detectAdBlocker()
             .then((isBlocked) => {
                 if (isBlocked) {
-                    log('Ad blocker detected, replacing page content');
                     replacePageContent();
-                } else {
-                    log('No ad blocker detected, continuing with normal page');
                 }
             });
     }
 
-    // Run the check as early as possible
-    const runCheck = function() {
-        // For better performance, don't wait for DOMContentLoaded
-        // This allows the check to run in parallel with page loading
-        runAdBlockerCheck();
-    };
-
-    // Run immediately if possible
+    // Run the check immediately
     runCheck();
 })();
