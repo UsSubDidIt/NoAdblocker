@@ -6,47 +6,45 @@
             'https://gdmgsecure.com',
             'https://pagead2.googlesyndication.com',
             'https://ad.doubleclick.net',
-            'https://www.googletagservices.com/tag/js/gpt.js',  // Google Publisher Tag
-            'https://cdn.taboola.com/libtrc/your-publisher-name/loader.js', // Replace with a real Taboola publisher
-            'https://static.criteo.net/js/ld/publishertag.js', // Criteo
-            'https://js.adsrvr.org/', // The Trade Desk
-            'https://ib.adnxs.com/ttj', // AppNexus (Xandr)
-            'https://contextual.media.net/dmedianet.js',   // Media.net
-            'https://aax.amazon-adsystem.com/s/apstag.js', // Amazon
-            'https://ads.pubmatic.com/AdServer/js/gshowad.js', // PubMatic
-            'https://adserver.adtechus.com/',            // AdTech
-            'https://prebid.org/dist/prebid.js',         // Prebid.js (Common header bidding library)
-            'https://acdn.adnxs.com/prebid/not-for-prod/1/prebid.js',  //another prebid url
-            'https://cdn.jsdelivr.net/npm/prebid.js@latest/dist/not-for-prod/prebid.js', //prebid from cdn
-            '/ads.js',     // Common local file name
-            '/ads.min.js', // Common local file name (minified)
+            'https://www.googletagservices.com/tag/js/gpt.js',
+            'https://cdn.taboola.com/libtrc/your-publisher-name/loader.js', // Replace with your actual publisher
+            'https://static.criteo.net/js/ld/publishertag.js',
+            'https://js.adsrvr.org/',
+            'https://ib.adnxs.com/ttj',
+            'https://contextual.media.net/dmedianet.js',
+            'https://aax.amazon-adsystem.com/s/apstag.js',
+            'https://ads.pubmatic.com/AdServer/js/gshowad.js',
+            'https://adserver.adtechus.com/',
+            'https://prebid.org/dist/prebid.js',
+            'https://acdn.adnxs.com/prebid/not-for-prod/1/prebid.js',
+            'https://cdn.jsdelivr.net/npm/prebid.js@latest/dist/not-for-prod/prebid.js',
+            '/ads.js',
+            '/ads.min.js',
             '/advertisement.js',
             '/banner.js',
-            '/adblocker.js', //ironic, but sometimes used.
-            'https://fundingchoicesmessages.google.com/s/your_id/message.js', // Google funding choices.
+            '/adblocker.js',
+            'https://fundingchoicesmessages.google.com/s/your_id/message.js', // Replace with your ID
         ],
         timeoutMs: 3000,
         debugMode: false,
-        invisibleElementCheckDelay: 2000, // Delay in milliseconds before checking invisible elements
+        invisibleElementCheckDelay: 100,
+        expectedContent: {
+             'https://pagead2.googlesyndication.com': ['googlesyndication', 'google', 'ads'],
+             // Add more URL-specific expected content here.  Example:
+             // 'https://www.googletagservices.com/tag/js/gpt.js': ['googletag', 'gpt'],
+        },
     };
 
-    // Logger function
     function log(message, error = false) {
         if (config.debugMode) {
-            if (error) {
-                console.error(`[AdBlockDetector] ${message}`);
-            } else {
-                console.log(`[AdBlockDetector] ${message}`);
-            }
+            console[error ? 'error' : 'log'](`[AdBlockDetector] ${message}`);
         }
     }
 
-    // Check URL accessibility
     function checkUrl(url) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            const randomParam = `?rand=${Math.random()}`;
-            const fullUrl = `${url}${randomParam}`;
+            const fullUrl = `${url}?rand=${Math.random()}`;
 
             const timeoutId = setTimeout(() => {
                 xhr.abort();
@@ -56,8 +54,31 @@
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4) {
                     clearTimeout(timeoutId);
-                    if ((xhr.status >= 200 && xhr.status < 300) || (xhr.status >= 400 && xhr.status < 500)) {
-                        resolve(true);
+
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const responseText = xhr.responseText;
+                        if (!responseText) {
+                            reject({ type: 'empty_response', message: 'Response body is empty' });
+                            return; // Important: Prevent further processing
+                        }
+
+                        if (config.expectedContent[url]) {
+                            const expectedStrings = config.expectedContent[url];
+                            let foundExpectedContent = false;
+                            for (const str of expectedStrings) {
+                                if (responseText.includes(str)) {
+                                    foundExpectedContent = true;
+                                    break;
+                                }
+                            }
+                            if (!foundExpectedContent) {
+                                reject({ type: 'unexpected_content', message: 'Unexpected response content', content: responseText.substring(0, 200) });
+                                return; // Important: Prevent further processing
+                            }
+                        }
+                        resolve(true); // URL accessible and content matches (or no content check)
+                    } else if(xhr.status >= 400 && xhr.status < 500) {
+                        resolve(true); // Treat 4xx status codes as not blocked
                     } else {
                         reject({ type: 'http_error', message: `HTTP status: ${xhr.status}`, status: xhr.status });
                     }
@@ -79,7 +100,6 @@
         });
     }
 
-    // Creates invisible elements with common ad-related class names
     function createInvisibleElements() {
         const adClasses = [
             'ads', 'ads-main', 'ad-main', 'AdHeader', 'AdContainer', 'AD_Top', 'homead', 'ad-lead',
@@ -92,7 +112,7 @@
             'google_ads_iframe',  'taboola-placeholder', 'criteo-placeholder',
             'outbrain-placeholder', 'doubleclick-placeholder', 'adsbygoogle', 'adroll-placeholder',
             'amazon-ad-placeholder', 'mgid-placeholder',  'teads-placeholder', 'yieldmo-placeholder',
-             'prebid-ad-unit',  'appnexus-ad-unit', //Header Bidding
+            'prebid-ad-unit',  'appnexus-ad-unit',
             'pubmatic-ad-unit', 'rubicon-ad-unit',
         ];
 
@@ -107,12 +127,12 @@
         return elements;
     }
 
-    // Checks if the invisible elements are still visible
+    // Checks if the invisible elements are still visible (using multiple methods)
     function checkInvisibleElements(elements) {
         let blocked = false;
         elements.forEach(element => {
             if (
-                element.offsetParent === null ||
+                element.offsetParent === null || // Most reliable: Element is not in the layout
                 element.offsetHeight === 0 ||
                 element.offsetWidth === 0 ||
                 element.getClientRects().length === 0 ||
@@ -121,13 +141,11 @@
             ) {
                 blocked = true;
             }
-            element.remove();
+            element.remove(); // Clean up: Remove the element after checking
         });
         return blocked;
     }
 
-
-    // Checks for ad blocker by trying multiple URLs and checking invisible elements
     function detectAdBlocker() {
         return new Promise((resolve) => {
             const invisibleElements = createInvisibleElements();
@@ -147,7 +165,10 @@
                         results.forEach(result => {
                             log(`${result.url}: ${result.blocked ? 'BLOCKED' : 'ACCESSIBLE'}`);
                             if (result.blocked && result.error) {
-                                log(`Error: ${result.error.message}`, true);
+                                log(`Error: ${result.error.type} - ${result.error.message}`, true);
+                                if (result.error.content) {
+                                    log(`  Content: ${result.error.content}`, true);
+                                }
                             }
                         });
                     }
@@ -157,21 +178,20 @@
                         if (config.debugMode) {
                             log(`Detection results (invisible elements): ${invisibleElementsBlocked ? 'BLOCKED' : 'ACCESSIBLE'}`);
                         }
-                        resolve(!anyAccessible || invisibleElementsBlocked);
+                        resolve(!anyAccessible || invisibleElementsBlocked); // Blocked if ANY check fails
                     }, config.invisibleElementCheckDelay);
                 })
                 .catch(error => {
                     log(`Unexpected error in detection: ${error.message}`, true);
-                    resolve(true);
+                    resolve(true); // Assume blocked on unexpected errors
                 });
         });
     }
 
-    // HTML to replace the page with if ad blocker is detected
     const replacementHTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport"content="width=device-width, initial-scale=1.0"><title>You are using an ad-blocker</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-      
+
       :root {
         --background: #f7f7f8;
         --foreground: #18181b;
@@ -184,13 +204,13 @@
         --border: #e4e4e7;
         --radius: 0.5rem;
       }
-      
+
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
-      
+
       body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         background-color: var(--background);
@@ -202,27 +222,27 @@
         padding: 1rem;
         line-height: 1.5;
       }
-      
+
       .detected-container {
         width: 100%;
         max-width: 28rem;
       }
-      
+
       .blocker-detected-card {
         background-color: var(--card);
         border-radius: var(--radius);
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         overflow: hidden;
       }
-      
+
       .blocker-detected-header {
         padding: 1.5rem 1.5rem 0;
       }
-      
+
       .blocker-detected-content {
         padding: 1.5rem;
       }
-      
+
       .blocker-detected-footer {
         padding: 1rem 1.5rem;
         background-color: var(--background);
@@ -231,7 +251,7 @@
         text-align: center;
         border-top: 1px solid var(--border);
       }
-      
+
       h1 {
         font-size: 1.25rem;
         font-weight: 600;
@@ -240,13 +260,13 @@
         margin-bottom: 0.5rem;
         color: var(--foreground);
       }
-      
+
       .blocker-detected-description {
         color: var(--muted-foreground);
         font-size: 0.875rem;
         margin-bottom: 0.25rem;
       }
-      
+
       .instruction {
         background-color: var(--background);
         border-radius: var(--radius);
@@ -254,16 +274,16 @@
         margin-bottom: 1rem;
         font-size: 0.875rem;
       }
-      
+
       .instruction-title {
         font-weight: 500;
         margin-bottom: 0.5rem;
       }
-      
+
       .instruction-text {
         color: var(--muted-foreground);
       }
-      
+
       .button {
         display: inline-flex;
         align-items: center;
@@ -278,33 +298,33 @@
         cursor: pointer;
         text-decoration: none;
       }
-      
+
       .button-primary {
         background-color: var(--primary);
         color: var(--primary-foreground);
         width: 100%;
         margin-top: 1rem;
       }
-      
+
       .button-primary:hover {
         opacity: 0.9;
       }
-      
+
       .button-link {
         color: var(--primary);
         height: auto;
         padding: 0;
       }
-      
+
       .button-link:hover {
         text-decoration: underline;
       }
-      
+
       .credit-link {
         color: inherit;
         text-decoration: none;
       }
-      
+
       .credit-link:hover {
         text-decoration: underline;
       }
@@ -317,24 +337,24 @@
             <h1>Ad blocker detected</h1>
             <p class="blocker-detected-description">Please disable your ad blocker to continue using this site.</p>
           </div>
-          
+
           <div class="blocker-detected-content">
             <div class="instruction">
               <div class="instruction-title">Why disable your ad blocker?</div>
               <p class="instruction-text">Ads help us keep this website running and provide you with free content. We promise to only show unobtrusive ads.</p>
             </div>
-            
+
             <div class="instruction">
               <div class="instruction-title">How to proceed</div>
               <p class="instruction-text">
                 1. Disable your ad blocker for this website<br>
-                2. <a href="javascript:location.reload();" class="button-link">Refresh the page</a> to continue
+                2.  <a href="javascript:location.reload();" class="button-link">Refresh the page</a> to continue
               </p>
             </div>
-            
+
             <a href="javascript:location.reload();" class="button button-primary">Try again</a>
           </div>
-          
+
           <div class="blocker-detected-footer">
             Powered by <a href="https://noadblocker.be-a.dev/?ref=blocked-page&utm_source=${window.location.hostname}" target="_blank" class="credit-link">NoAdblocker</a>
           </div>
@@ -343,25 +363,21 @@
     </body>
     </html>`;
 
-    // Replace page content if ad blocker is detected
     function replacePageContent() {
-        log('Replacing page content due to ad blocker detection');
+        log('Replacing page content');
         document.open();
         document.write(replacementHTML);
         document.close();
     }
 
-    // Run the ad blocker check
     function runAdBlockerCheck() {
         log('Running ad blocker detection');
-        detectAdBlocker()
-            .then((isBlocked) => {
-                if (isBlocked) {
-                    replacePageContent();
-                }
-            });
+        detectAdBlocker().then(isBlocked => {
+            if (isBlocked) {
+                replacePageContent();
+            }
+        });
     }
 
-    // Run the check immediately
-    runCheck();
+    document.addEventListener('DOMContentLoaded', runAdBlockerCheck);
 })();
